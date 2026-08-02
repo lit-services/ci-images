@@ -1,0 +1,64 @@
+name: kaniko-glibc
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kaniko-glibc/**'
+      - '.github/workflows/kaniko-glibc.yml'
+  schedule:
+    # Monatlich neu bauen: die Debian-Basis bekommt Sicherheitsaktualisierungen,
+    # auch wenn sich hier nichts ändert.
+    - cron: '23 5 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # Eine Quelle für die Version — dieselbe Zahl steht als ARG im Dockerfile
+  # und landet als Image-Tag.
+  KANIKO_VERSION: v1.23.2
+
+jobs:
+  build:
+    name: Bauen und nach GHCR schieben
+    # Bewusst GitHub-gehostet: dieses Image ist die Voraussetzung dafür, dass
+    # unsere selbst-gehosteten Runner Images bauen können. Es hier auf ihnen
+    # zu bauen, wäre ein Kreis.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: An GHCR anmelden
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bauen und schieben
+        uses: docker/build-push-action@v6
+        with:
+          context: kaniko-glibc
+          push: true
+          build-args: |
+            KANIKO_VERSION=${{ env.KANIKO_VERSION }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/kaniko-glibc:${{ env.KANIKO_VERSION }}
+            ghcr.io/${{ github.repository_owner }}/kaniko-glibc:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Der eigentliche Zweck des Images ist, dass ein glibc-Binary darin
+      # startet. Genau das wird geprüft, statt sich auf „Build erfolgreich"
+      # zu verlassen — mit dem Interpreter-Pfad, an dem das busybox-Image
+      # scheitert.
+      - name: Nachweis — glibc vorhanden und kaniko lauffähig
+        run: |
+          IMG=ghcr.io/${{ github.repository_owner }}/kaniko-glibc:${{ env.KANIKO_VERSION }}
+          docker run --rm "$IMG" sh -c 'ls /lib/x86_64-linux-gnu/libc.so.6'
+          docker run --rm "$IMG" sh -c '/kaniko/executor version'

@@ -1,4 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>lit-services/.github//renovate-config/default"]
+  "extends": [
+    "github>lit-services/.github//renovate-config/default"
+  ],
+  "mode": "full"
 }
